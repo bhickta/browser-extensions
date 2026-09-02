@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>SmartVideoSkipper</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <h1><span>⚡</span> SmartVideoSkipper</h1>
+      <p id="site">Loading current tab…</p>
+      <label><span>Allow on this site</span><input id="allowed" type="checkbox"></label>
+      <label><span>Enable video controls</span><input id="enabled" type="checkbox"></label>
+      <button id="settings" type="button">Open in-page settings</button>
+      <p class="hint">Changes reload the current page. For local videos, also grant the extension access to file URLs in your browser.</p>
+      <p id="status" role="status"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
