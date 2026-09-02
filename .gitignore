@@ -2,3 +2,4 @@
 **/dist/
 *.xpi
 *.zip
+.firefox-dev-profile/

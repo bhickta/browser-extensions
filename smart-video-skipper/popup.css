@@ -1,7 +1,8 @@
 :root { color-scheme: dark; font: 13px/1.4 system-ui, sans-serif; }
 body { margin: 0; min-width: 290px; background: #10131d; color: #e8eaf6; }
 main { padding: 16px; }
-h1 { margin: 0 0 8px; font-size: 16px; color: #00e5ff; }
+h1 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 16px; color: #00e5ff; }
+h1 img { width: 28px; height: 28px; }
 #site { margin: 0 0 14px; color: #9ca3af; overflow-wrap: anywhere; }
 label { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 9px 0; border-top: 1px solid #ffffff12; }
 input { accent-color: #00e5ff; }

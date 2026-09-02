@@ -2,7 +2,18 @@
 
 A dependency-free WebExtension for Firefox, Chrome, Chromium, Edge, Brave, and other Manifest V3 browsers. It adds HTML5 video skip controls, auto-skip, playback-speed controls, bookmarks, progress seeking, hotkeys, and an in-page settings panel.
 
+![SmartVideoSkipper logo](icons/icon-128.png)
+
 ## Install in Firefox (development)
+
+From the repository root, the automated method is:
+
+```sh
+./scripts/firefox-dev-install.sh smart-video-skipper
+```
+
+Run `./scripts/firefox-dev-install.sh --help` for profile and Firefox-binary
+options. Alternatively, load it manually:
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Select **Load Temporary Add-on…**.
@@ -34,6 +45,10 @@ The distributable archive is written to `dist/smart-video-skipper-3.0.0.zip`.
 - The extension starts disabled. Use its toolbar popup to enable controls.
 - The toolbar popup is the cross-browser replacement for userscript manager menu commands.
 - Embedded cross-origin players work because the content script is allowed in all frames.
+- **Prefer forward buffering** continuously applies the browser's strongest
+  non-disruptive `preload="auto"` hint. URL-backed videos generally honor it;
+  YouTube's adaptive MediaSource player can still control how many future
+  segments it downloads.
 
 ## License
 

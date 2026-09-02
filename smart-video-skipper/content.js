@@ -35,6 +35,7 @@
     enabled: false,
     autoSkipEnabled: false,
     muteOnSkip: false,
+    preferForwardBuffering: true,
     observeNewVideos: true
   };
 
@@ -70,6 +71,7 @@
       this.toastBox = null;
       this.observer = null;
       this.autoTimer = null;
+      this.preloadTimer = null;
       this.raf = null;
       this.bookmarks = [];
       this.keyHandler = event => this.onKey(event);
@@ -87,6 +89,7 @@
         });
         this.observer.observe(document.documentElement, { childList: true, subtree: true });
       }
+      this.preloadTimer = setInterval(() => this.applyPreloadHint(), 5000);
       api.runtime.onMessage.addListener(message => {
         if (message?.type === 'svs:open-settings') this.openPanel();
       });
@@ -127,10 +130,19 @@
       this.stopAutoSkip();
       this.detachOverlay();
       this.video = video;
+      this.applyPreloadHint();
       if (this.config.get('enabled')) {
         this.renderOverlay();
         if (this.config.get('autoSkipEnabled')) this.startAutoSkip();
       }
+    }
+
+    applyPreloadHint() {
+      if (!this.video || !this.config.get('preferForwardBuffering')) return;
+      // This is honored by normal URL-backed media. YouTube may override it
+      // because its MediaSource pipeline controls adaptive segment fetching.
+      this.video.preload = 'auto';
+      this.video.setAttribute('preload', 'auto');
     }
 
     seek(time) {
@@ -336,6 +348,7 @@
         ['Panel hotkey', 'hotkeyPanelToggle', 'text'], ['Vertical offset', 'overlayOffset', 'number'],
         ['Overlay opacity', 'overlayOpacity', 'number'], ['Accent color', 'accentColor', 'color'],
         ['Show progress bar', 'showProgressBar', 'checkbox'], ['Bookmark toast', 'showBookmarkToast', 'checkbox'],
+        ['Prefer forward buffering', 'preferForwardBuffering', 'checkbox'],
         ['Observe new videos', 'observeNewVideos', 'checkbox']
       ];
       const header = document.createElement('header');
