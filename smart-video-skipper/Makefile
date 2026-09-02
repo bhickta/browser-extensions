@@ -1,7 +1,8 @@
-VERSION := 3.0.0
+VERSION := 3.0.1
 PACKAGE := dist/smart-video-skipper-$(VERSION).zip
 FILES := manifest.json content.js content.css popup.html popup.js popup.css README.md LICENSE \
-	icons/icon-16.png icons/icon-32.png icons/icon-48.png icons/icon-96.png icons/icon-128.png
+	icons/icon-16.png icons/icon-19.png icons/icon-32.png icons/icon-38.png \
+	icons/icon-48.png icons/icon-96.png icons/icon-128.png
 
 .PHONY: package check clean
 
