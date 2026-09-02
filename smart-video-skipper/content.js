@@ -203,9 +203,9 @@
       this.overlay.innerHTML = `
         <div class="svs-bar">
           <div class="svs-group">
-            <button data-action="back">↩ ${this.config.get('backSkipAmount')}s</button>
-            <button class="svs-auto ${this.config.get('autoSkipEnabled') ? 'svs-active' : ''}" data-action="auto">⚡ AUTO</button>
-            <button data-action="forward">↪ ${this.config.get('forwardSkipAmount')}s</button>
+            <button data-action="back"></button>
+            <button class="svs-auto" data-action="auto">⚡ AUTO</button>
+            <button data-action="forward"></button>
           </div>
           <div class="svs-group svs-middle">
             <span class="svs-time">0:00 / 0:00</span>
@@ -217,8 +217,12 @@
             <button data-action="settings" title="Settings">⚙</button>
           </div>
         </div>
-        ${this.config.get('showProgressBar') ? '<div class="svs-progress"><i></i><b></b></div>' : ''}
+        <div class="svs-progress"><i></i><b></b></div>
         <div class="svs-bookmarks"></div><div class="svs-flash"></div>`;
+      this.overlay.querySelector('[data-action="back"]').textContent = `↩ ${this.config.get('backSkipAmount')}s`;
+      this.overlay.querySelector('[data-action="forward"]').textContent = `↪ ${this.config.get('forwardSkipAmount')}s`;
+      this.overlay.querySelector('.svs-auto').classList.toggle('svs-active', this.config.get('autoSkipEnabled'));
+      this.overlay.querySelector('.svs-progress').hidden = !this.config.get('showProgressBar');
       document.documentElement.append(this.overlay);
       this.overlay.addEventListener('click', event => {
         const action = event.target.closest('button')?.dataset.action;
