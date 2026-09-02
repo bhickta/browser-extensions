@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SmartVideoSkipper Pro",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "description": "Cross-browser HTML5 video skip, speed, bookmark, and auto-skip controls.",
   "icons": {
     "16": "icons/icon-16.png",

@@ -36,6 +36,8 @@
     autoSkipEnabled: false,
     muteOnSkip: false,
     preferForwardBuffering: true,
+    bufferAwareSkipping: true,
+    bufferWaitTimeout: 15,
     observeNewVideos: true
   };
 
@@ -72,6 +74,9 @@
       this.observer = null;
       this.autoTimer = null;
       this.preloadTimer = null;
+      this.cancelBufferWait = null;
+      this.bufferWaitGeneration = 0;
+      this.buffering = false;
       this.raf = null;
       this.bookmarks = [];
       this.keyHandler = event => this.onKey(event);
@@ -127,6 +132,8 @@
     }
 
     attach(video) {
+      this.bufferWaitGeneration += 1;
+      this.cancelBufferWait?.();
       this.stopAutoSkip();
       this.detachOverlay();
       this.video = video;
@@ -147,14 +154,85 @@
 
     seek(time) {
       if (!this.video || !Number.isFinite(time)) return;
+      this.bufferWaitGeneration += 1;
+      this.cancelBufferWait?.();
       const duration = Number.isFinite(this.video.duration) ? this.video.duration : Infinity;
       this.video.currentTime = clamp(time, 0, duration);
     }
 
-    skip(amount, toast = true) {
+    isBufferedAt(video, time, minimumAhead = 0.75) {
+      if (!video || !Number.isFinite(time)) return false;
+      const requiredEnd = Number.isFinite(video.duration)
+        ? Math.min(video.duration, time + minimumAhead)
+        : time + minimumAhead;
+      try {
+        for (let index = 0; index < video.buffered.length; index += 1) {
+          if (video.buffered.start(index) <= time && video.buffered.end(index) >= requiredEnd) return true;
+        }
+      } catch { return false; }
+      return false;
+    }
+
+    async bufferAwareSeek(time) {
+      const video = this.video;
+      if (!video || !Number.isFinite(time)) return { cancelled: true, timedOut: false };
+      const duration = Number.isFinite(video.duration) ? video.duration : Infinity;
+      const target = clamp(time, 0, duration);
+      if (!this.config.get('bufferAwareSkipping') || this.isBufferedAt(video, target)) {
+        this.seek(target);
+        return { cancelled: false, timedOut: false };
+      }
+
+      this.cancelBufferWait?.();
+      const generation = ++this.bufferWaitGeneration;
+      const wasPlaying = !video.paused && !video.ended;
+      if (wasPlaying) video.pause();
+      this.buffering = true;
+      this.flash('BUFFERING…');
+      this.showToast(`Preparing ${formatTime(target)}`, '⏳');
+      video.currentTime = target;
+
+      const timeoutMs = Math.max(1, Number(this.config.get('bufferWaitTimeout')) || 15) * 1000;
+      const result = await new Promise(resolve => {
+        const events = ['canplay', 'canplaythrough', 'loadeddata', 'progress', 'seeked'];
+        let settled = false;
+        let timer;
+        const cleanup = () => {
+          clearTimeout(timer);
+          events.forEach(event => video.removeEventListener(event, check));
+        };
+        const finish = value => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (this.cancelBufferWait === cancel) this.cancelBufferWait = null;
+          resolve(value);
+        };
+        const check = () => {
+          if (this.video !== video) { finish({ cancelled: true, timedOut: false }); return; }
+          if (!video.seeking && (this.isBufferedAt(video, target) || video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA)) {
+            finish({ cancelled: false, timedOut: false });
+          }
+        };
+        const cancel = () => finish({ cancelled: true, timedOut: false });
+        this.cancelBufferWait = cancel;
+        events.forEach(event => video.addEventListener(event, check));
+        timer = setTimeout(() => finish({ cancelled: false, timedOut: true }), timeoutMs);
+        check();
+      });
+
+      if (generation === this.bufferWaitGeneration) this.buffering = false;
+      if (!result.cancelled && generation === this.bufferWaitGeneration && this.video === video && wasPlaying) {
+        await video.play().catch(() => {});
+      }
+      if (result.timedOut) this.showToast('Buffer wait timed out; resuming', '⚠️');
+      return result;
+    }
+
+    async skip(amount, toast = true) {
       if (!this.video || !this.config.get('enabled')) return;
-      this.seek(this.video.currentTime + amount);
       if (toast) this.showToast(`${amount >= 0 ? '+' : ''}${amount}s`, amount >= 0 ? '⏩' : '⏪');
+      return this.bufferAwareSeek(this.video.currentTime + amount);
     }
 
     changeSpeed(direction) {
@@ -183,13 +261,13 @@
       const schedule = () => {
         const seconds = Number(this.config.get('autoSkipInterval'));
         if (!seconds || !this.config.get('autoSkipEnabled')) return;
-        this.autoTimer = setTimeout(() => {
+        this.autoTimer = setTimeout(async () => {
           if (this.video && !this.video.paused && !this.video.ended) {
             const wasMuted = this.video.muted;
             if (this.config.get('muteOnSkip')) this.video.muted = true;
             const amount = Number(this.config.get('skipAmount')) || 0;
-            this.skip(amount, false);
-            if (this.config.get('muteOnSkip')) setTimeout(() => { if (this.video) this.video.muted = wasMuted; }, 200);
+            await this.skip(amount, false);
+            if (this.config.get('muteOnSkip') && this.video) this.video.muted = wasMuted;
             this.flash(`+${amount}s`);
           }
           schedule();
@@ -259,7 +337,7 @@
         if (!this.video || !this.overlay) return;
         const duration = this.video.duration;
         const remaining = Number.isFinite(duration) ? (duration - this.video.currentTime) / (this.video.playbackRate || 1) : NaN;
-        this.overlay.querySelector('.svs-time').textContent = `${formatTime(this.video.currentTime)} / ${formatTime(duration)}${Number.isFinite(remaining) ? ` [-${formatTime(remaining)}]` : ''}`;
+        this.overlay.querySelector('.svs-time').textContent = `${this.buffering ? '⏳ ' : ''}${formatTime(this.video.currentTime)} / ${formatTime(duration)}${Number.isFinite(remaining) ? ` [-${formatTime(remaining)}]` : ''}`;
         this.overlay.querySelector('.svs-speed').textContent = `${this.video.playbackRate.toFixed(2)}×`;
         const percent = Number.isFinite(duration) && duration > 0 ? this.video.currentTime / duration * 100 : 0;
         const bar = this.overlay.querySelector('.svs-progress i');
@@ -349,6 +427,8 @@
         ['Overlay opacity', 'overlayOpacity', 'number'], ['Accent color', 'accentColor', 'color'],
         ['Show progress bar', 'showProgressBar', 'checkbox'], ['Bookmark toast', 'showBookmarkToast', 'checkbox'],
         ['Prefer forward buffering', 'preferForwardBuffering', 'checkbox'],
+        ['Buffer-aware skipping', 'bufferAwareSkipping', 'checkbox'],
+        ['Buffer timeout (seconds)', 'bufferWaitTimeout', 'number'],
         ['Observe new videos', 'observeNewVideos', 'checkbox']
       ];
       const header = document.createElement('header');
