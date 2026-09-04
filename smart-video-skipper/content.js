@@ -37,7 +37,6 @@
     muteOnSkip: false,
     preferForwardBuffering: true,
     bufferAwareSkipping: true,
-    bufferWaitTimeout: 15,
     observeNewVideos: true
   };
 
@@ -74,9 +73,6 @@
       this.observer = null;
       this.autoTimer = null;
       this.preloadTimer = null;
-      this.cancelBufferWait = null;
-      this.bufferWaitGeneration = 0;
-      this.resumeAfterBufferWait = false;
       this.buffering = false;
       this.raf = null;
       this.bookmarks = [];
@@ -133,9 +129,6 @@
     }
 
     attach(video) {
-      this.bufferWaitGeneration += 1;
-      this.cancelBufferWait?.();
-      this.resumeAfterBufferWait = false;
       this.buffering = false;
       this.stopAutoSkip();
       this.detachOverlay();
@@ -157,22 +150,18 @@
 
     seek(time) {
       if (!this.video || !Number.isFinite(time)) return;
-      this.bufferWaitGeneration += 1;
-      this.cancelBufferWait?.();
-      this.resumeAfterBufferWait = false;
       this.buffering = false;
       const duration = Number.isFinite(this.video.duration) ? this.video.duration : Infinity;
       this.video.currentTime = clamp(time, 0, duration);
     }
 
-    isBufferedAt(video, time, minimumAhead = 0.75) {
+    bufferedRangeAt(video, time) {
       if (!video || !Number.isFinite(time)) return false;
-      const requiredEnd = Number.isFinite(video.duration)
-        ? Math.min(video.duration, time + minimumAhead)
-        : time + minimumAhead;
       try {
         for (let index = 0; index < video.buffered.length; index += 1) {
-          if (video.buffered.start(index) <= time && video.buffered.end(index) >= requiredEnd) return true;
+          const start = video.buffered.start(index);
+          const end = video.buffered.end(index);
+          if (start <= time && end > time) return { start, end };
         }
       } catch { return false; }
       return false;
@@ -182,64 +171,18 @@
       const video = this.video;
       if (!video || !Number.isFinite(time)) return { cancelled: true, timedOut: false };
       const duration = Number.isFinite(video.duration) ? video.duration : Infinity;
-      const target = clamp(time, 0, duration);
-      const shouldResume = this.resumeAfterBufferWait || (!video.paused && !video.ended);
-      if (!this.config.get('bufferAwareSkipping') || this.isBufferedAt(video, target)) {
-        this.bufferWaitGeneration += 1;
-        this.cancelBufferWait?.();
-        this.resumeAfterBufferWait = false;
-        this.buffering = false;
-        video.currentTime = target;
-        if (shouldResume && video.paused && !video.ended) await video.play().catch(() => {});
-        return { cancelled: false, timedOut: false };
+      let target = clamp(time, 0, duration);
+      if (this.config.get('bufferAwareSkipping')) {
+        const range = this.bufferedRangeAt(video, video.currentTime);
+        if (!range) return { cancelled: false, timedOut: false, limited: true };
+        const safetyMargin = 0.1;
+        const minimum = Math.min(video.currentTime, range.start + safetyMargin);
+        const maximum = Math.max(video.currentTime, range.end - safetyMargin);
+        target = clamp(target, minimum, maximum);
       }
-
-      this.cancelBufferWait?.();
-      const generation = ++this.bufferWaitGeneration;
-      this.resumeAfterBufferWait = shouldResume;
-      if (!video.paused && !video.ended) video.pause();
-      this.buffering = true;
-      this.flash('BUFFERING…');
-      this.showToast(`Preparing ${formatTime(target)}`, '⏳');
+      this.buffering = false;
       video.currentTime = target;
-
-      const timeoutMs = Math.max(1, Number(this.config.get('bufferWaitTimeout')) || 15) * 1000;
-      const result = await new Promise(resolve => {
-        const events = ['canplay', 'canplaythrough', 'loadeddata', 'progress', 'seeked'];
-        let settled = false;
-        let timer;
-        const cleanup = () => {
-          clearTimeout(timer);
-          events.forEach(event => video.removeEventListener(event, check));
-        };
-        const finish = value => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          if (this.cancelBufferWait === cancel) this.cancelBufferWait = null;
-          resolve(value);
-        };
-        const check = () => {
-          if (this.video !== video) { finish({ cancelled: true, timedOut: false }); return; }
-          if (!video.seeking && (this.isBufferedAt(video, target) || video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA)) {
-            finish({ cancelled: false, timedOut: false });
-          }
-        };
-        const cancel = () => finish({ cancelled: true, timedOut: false });
-        this.cancelBufferWait = cancel;
-        events.forEach(event => video.addEventListener(event, check));
-        timer = setTimeout(() => finish({ cancelled: false, timedOut: true }), timeoutMs);
-        check();
-      });
-
-      if (generation === this.bufferWaitGeneration) {
-        this.buffering = false;
-        const resume = this.resumeAfterBufferWait;
-        this.resumeAfterBufferWait = false;
-        if (!result.cancelled && this.video === video && resume) await video.play().catch(() => {});
-      }
-      if (result.timedOut) this.showToast('Buffer wait timed out; resuming', '⚠️');
-      return result;
+      return { cancelled: false, timedOut: false, limited: target !== time };
     }
 
     async skip(amount, toast = true) {
@@ -441,7 +384,6 @@
         ['Show progress bar', 'showProgressBar', 'checkbox'], ['Bookmark toast', 'showBookmarkToast', 'checkbox'],
         ['Prefer forward buffering', 'preferForwardBuffering', 'checkbox'],
         ['Buffer-aware skipping', 'bufferAwareSkipping', 'checkbox'],
-        ['Buffer timeout (seconds)', 'bufferWaitTimeout', 'number'],
         ['Observe new videos', 'observeNewVideos', 'checkbox']
       ];
       const header = document.createElement('header');

@@ -47,7 +47,7 @@ Run:
 make package
 ```
 
-The distributable archive is written to `dist/smart-video-skipper-3.1.1.zip`.
+The distributable archive is written to `dist/smart-video-skipper-3.1.2.zip`.
 
 ## Notes
 
@@ -59,11 +59,10 @@ The distributable archive is written to `dist/smart-video-skipper-3.1.1.zip`.
   non-disruptive `preload="auto"` hint. URL-backed videos generally honor it;
   YouTube's adaptive MediaSource player can still control how many future
   segments it downloads.
-- **Buffer-aware skipping** checks the active video's buffered ranges. When a
-  skip target is not ready, it pauses, seeks to make the player request that
-  segment, waits for playable media (up to the configured timeout), and then
-  restores the prior playing state. Progress-bar and bookmark jumps stay
-  immediate.
+- **Buffer-aware skipping** constrains every skip to the active video's
+  currently buffered range. Near a buffer edge, the skip is shortened instead
+  of pausing playback or seeking into unbuffered media. Progress-bar and
+  bookmark jumps stay immediate.
 
 ## License
 
