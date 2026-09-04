@@ -47,7 +47,7 @@ Run:
 make package
 ```
 
-The distributable archive is written to `dist/smart-video-skipper-3.1.0.zip`.
+The distributable archive is written to `dist/smart-video-skipper-3.1.1.zip`.
 
 ## Notes
 

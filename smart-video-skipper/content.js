@@ -76,6 +76,7 @@
       this.preloadTimer = null;
       this.cancelBufferWait = null;
       this.bufferWaitGeneration = 0;
+      this.resumeAfterBufferWait = false;
       this.buffering = false;
       this.raf = null;
       this.bookmarks = [];
@@ -134,6 +135,8 @@
     attach(video) {
       this.bufferWaitGeneration += 1;
       this.cancelBufferWait?.();
+      this.resumeAfterBufferWait = false;
+      this.buffering = false;
       this.stopAutoSkip();
       this.detachOverlay();
       this.video = video;
@@ -156,6 +159,8 @@
       if (!this.video || !Number.isFinite(time)) return;
       this.bufferWaitGeneration += 1;
       this.cancelBufferWait?.();
+      this.resumeAfterBufferWait = false;
+      this.buffering = false;
       const duration = Number.isFinite(this.video.duration) ? this.video.duration : Infinity;
       this.video.currentTime = clamp(time, 0, duration);
     }
@@ -178,15 +183,21 @@
       if (!video || !Number.isFinite(time)) return { cancelled: true, timedOut: false };
       const duration = Number.isFinite(video.duration) ? video.duration : Infinity;
       const target = clamp(time, 0, duration);
+      const shouldResume = this.resumeAfterBufferWait || (!video.paused && !video.ended);
       if (!this.config.get('bufferAwareSkipping') || this.isBufferedAt(video, target)) {
-        this.seek(target);
+        this.bufferWaitGeneration += 1;
+        this.cancelBufferWait?.();
+        this.resumeAfterBufferWait = false;
+        this.buffering = false;
+        video.currentTime = target;
+        if (shouldResume && video.paused && !video.ended) await video.play().catch(() => {});
         return { cancelled: false, timedOut: false };
       }
 
       this.cancelBufferWait?.();
       const generation = ++this.bufferWaitGeneration;
-      const wasPlaying = !video.paused && !video.ended;
-      if (wasPlaying) video.pause();
+      this.resumeAfterBufferWait = shouldResume;
+      if (!video.paused && !video.ended) video.pause();
       this.buffering = true;
       this.flash('BUFFERING…');
       this.showToast(`Preparing ${formatTime(target)}`, '⏳');
@@ -221,9 +232,11 @@
         check();
       });
 
-      if (generation === this.bufferWaitGeneration) this.buffering = false;
-      if (!result.cancelled && generation === this.bufferWaitGeneration && this.video === video && wasPlaying) {
-        await video.play().catch(() => {});
+      if (generation === this.bufferWaitGeneration) {
+        this.buffering = false;
+        const resume = this.resumeAfterBufferWait;
+        this.resumeAfterBufferWait = false;
+        if (!result.cancelled && this.video === video && resume) await video.play().catch(() => {});
       }
       if (result.timedOut) this.showToast('Buffer wait timed out; resuming', '⚠️');
       return result;

@@ -207,11 +207,11 @@ EOF
     mkdir -p "$ARTIFACTS_DIR"
     echo "Signing $(basename -- "$EXTENSION_DIR") as an unlisted Firefox add-on…"
     npx --yes web-ext sign \
+      --config "$SCRIPT_DIR/web-ext-sign-config.cjs" \
+      --no-config-discovery \
       --channel unlisted \
       --source-dir "$EXTENSION_DIR" \
-      --artifacts-dir "$ARTIFACTS_DIR" \
-      --api-key "$WEB_EXT_API_KEY" \
-      --api-secret "$WEB_EXT_API_SECRET"
+      --artifacts-dir "$ARTIFACTS_DIR"
 
     mapfile -t SIGNED_XPIS < <(find "$ARTIFACTS_DIR" -maxdepth 1 -type f -name '*.xpi' -print | sort)
     ((${#SIGNED_XPIS[@]} > 0)) || {
