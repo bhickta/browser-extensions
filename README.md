@@ -21,5 +21,14 @@ directory that is ignored by Git. Close Firefox before running it. To
 deliberately use an existing profile, pass `--profile PROFILE_NAME --in-place`;
 see `--help` for details.
 
-Development installations are temporary. Standard Firefox requires a
-Mozilla-signed XPI for permanent installation.
+Development installations are temporary. To install permanently, use Mozilla
+signing credentials to create an unlisted signed XPI and install it into the
+dedicated profile:
+
+```sh
+WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=... \
+  ./scripts/firefox-dev-install.sh --permanent smart-video-skipper
+```
+
+Alternatively, pass a previously signed XPI with `--permanent --signed-xpi
+PATH`. Standard Firefox will reject unsigned XPIs.

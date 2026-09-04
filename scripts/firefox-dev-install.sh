@@ -5,22 +5,28 @@ usage() {
   cat <<'EOF'
 Usage: scripts/firefox-dev-install.sh [options] [extension-directory]
 
-Validate and temporarily install a repository extension in Firefox.
+Validate and install a repository extension in Firefox.
 
 Options:
   --profile NAME_OR_PATH  Existing Firefox profile to use
   --firefox PATH          Firefox executable (auto-detected by default)
   --in-place              Keep changes in the selected profile
+  --permanent             Sign and permanently install the extension
+  --signed-xpi PATH       Permanently install this Mozilla-signed XPI
+  --artifacts-dir PATH    Directory for signed XPIs (default: extension/dist/firefox)
   --no-lint               Skip web-ext lint
   -h, --help              Show this help
 
 Examples:
   scripts/firefox-dev-install.sh smart-video-skipper
   scripts/firefox-dev-install.sh --profile default-release --in-place smart-video-skipper
+  WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=... \\
+    scripts/firefox-dev-install.sh --permanent smart-video-skipper
 
 By default, an isolated .firefox-dev-profile directory is created in the repo.
 The extension is temporary and must be loaded again after Firefox restarts.
-Permanent installation in standard Firefox requires a Mozilla-signed XPI.
+--permanent creates a Mozilla-signed unlisted XPI through AMO. It requires
+WEB_EXT_API_KEY and WEB_EXT_API_SECRET unless --signed-xpi is supplied.
 EOF
 }
 
@@ -31,6 +37,9 @@ FIREFOX_BIN=""
 IN_PLACE=0
 PROFILE_CREATE=0
 RUN_LINT=1
+PERMANENT=0
+SIGNED_XPI=""
+ARTIFACTS_DIR=""
 EXTENSION="smart-video-skipper"
 
 while (($#)); do
@@ -48,6 +57,20 @@ while (($#)); do
     --in-place)
       IN_PLACE=1
       shift
+      ;;
+    --permanent)
+      PERMANENT=1
+      shift
+      ;;
+    --signed-xpi)
+      [[ $# -ge 2 ]] || { echo "--signed-xpi requires a value" >&2; exit 2; }
+      SIGNED_XPI=$2
+      shift 2
+      ;;
+    --artifacts-dir)
+      [[ $# -ge 2 ]] || { echo "--artifacts-dir requires a value" >&2; exit 2; }
+      ARTIFACTS_DIR=$2
+      shift 2
       ;;
     --no-lint)
       RUN_LINT=0
@@ -68,6 +91,11 @@ while (($#)); do
       ;;
   esac
 done
+
+if [[ -n "$SIGNED_XPI" && "$PERMANENT" -eq 0 ]]; then
+  echo "--signed-xpi requires --permanent." >&2
+  exit 2
+fi
 
 if [[ -z "$PROFILE" ]]; then
   PROFILE="$REPO_DIR/.firefox-dev-profile"
@@ -115,6 +143,60 @@ Firefox is already running. Close all Firefox windows and run this command again
 so the selected profile is not locked.
 EOF
   exit 1
+fi
+
+if ((PERMANENT)); then
+  EXTENSION_ID=$(node -e '
+    const manifest = require(process.argv[1]);
+    const id = manifest.browser_specific_settings?.gecko?.id;
+    if (!id) process.exit(1);
+    process.stdout.write(id);
+  ' "$EXTENSION_DIR/manifest.json") || {
+    echo "Permanent installation requires browser_specific_settings.gecko.id." >&2
+    exit 1
+  }
+
+  if [[ -n "$SIGNED_XPI" ]]; then
+    [[ -f "$SIGNED_XPI" ]] || { echo "Signed XPI not found: $SIGNED_XPI" >&2; exit 1; }
+  else
+    if [[ -z "$ARTIFACTS_DIR" ]]; then
+      ARTIFACTS_DIR="$EXTENSION_DIR/dist/firefox"
+    elif [[ "$ARTIFACTS_DIR" != /* ]]; then
+      ARTIFACTS_DIR="$REPO_DIR/$ARTIFACTS_DIR"
+    fi
+
+    [[ -n "${WEB_EXT_API_KEY:-}" && -n "${WEB_EXT_API_SECRET:-}" ]] || {
+      cat >&2 <<'EOF'
+Permanent installation on standard Firefox requires a Mozilla-signed XPI.
+Set WEB_EXT_API_KEY and WEB_EXT_API_SECRET for an AMO API account, or pass an
+existing signed XPI with --signed-xpi PATH.
+EOF
+      exit 1
+    }
+
+    mkdir -p "$ARTIFACTS_DIR"
+    echo "Signing $(basename -- "$EXTENSION_DIR") as an unlisted Firefox add-on…"
+    npx --yes web-ext sign \
+      --channel unlisted \
+      --source-dir "$EXTENSION_DIR" \
+      --artifacts-dir "$ARTIFACTS_DIR" \
+      --api-key "$WEB_EXT_API_KEY" \
+      --api-secret "$WEB_EXT_API_SECRET"
+
+    mapfile -t SIGNED_XPIS < <(find "$ARTIFACTS_DIR" -maxdepth 1 -type f -name '*.xpi' -print | sort)
+    ((${#SIGNED_XPIS[@]} > 0)) || {
+      echo "web-ext sign did not produce an XPI in: $ARTIFACTS_DIR" >&2
+      exit 1
+    }
+    SIGNED_XPI=${SIGNED_XPIS[${#SIGNED_XPIS[@]} - 1]}
+  fi
+
+  mkdir -p "$PROFILE/extensions"
+  install -m 0644 "$SIGNED_XPI" "$PROFILE/extensions/$EXTENSION_ID.xpi"
+  echo "Installed signed XPI permanently in profile '$PROFILE'."
+  echo "Firefox may ask you to enable this newly side-loaded add-on."
+  echo "Launching Firefox profile '$PROFILE'…"
+  exec "$FIREFOX_BIN" --new-instance --profile "$PROFILE" --new-window about:addons
 fi
 
 ARGS=(
