@@ -97,10 +97,41 @@ if [[ -n "$SIGNED_XPI" && "$PERMANENT" -eq 0 ]]; then
   exit 2
 fi
 
+command -v node >/dev/null 2>&1 || { echo "Node.js is required." >&2; exit 1; }
+
 if [[ -z "$PROFILE" ]]; then
   PROFILE="$REPO_DIR/.firefox-dev-profile"
   PROFILE_CREATE=1
   IN_PLACE=1
+fi
+
+if (( !PROFILE_CREATE )) && [[ "$PROFILE" != /* && "$PROFILE" != ./* && ! -d "$PROFILE" ]]; then
+  PROFILES_INI="$HOME/.mozilla/firefox/profiles.ini"
+  [[ -f "$PROFILES_INI" ]] || {
+    echo "Firefox profile '$PROFILE' was not found and profiles.ini is unavailable." >&2
+    exit 1
+  }
+
+  PROFILE_PATH=$(node -e '
+    const fs = require("fs");
+    const [name, iniPath] = process.argv.slice(1);
+    const sections = fs.readFileSync(iniPath, "utf8").split(/\r?\n\s*\r?\n/);
+    for (const section of sections) {
+      const values = Object.fromEntries(section.split(/\r?\n/).flatMap((line) => {
+        const index = line.indexOf("=");
+        return index === -1 ? [] : [[line.slice(0, index), line.slice(index + 1)]];
+      }));
+      if (values.Name !== name || !values.Path) continue;
+      const path = values.IsRelative === "0" ? values.Path : require("path").join(require("path").dirname(iniPath), values.Path);
+      process.stdout.write(path);
+      process.exit(0);
+    }
+    process.exit(1);
+  ' "$PROFILE" "$PROFILES_INI") || {
+    echo "Firefox profile '$PROFILE' was not found in: $PROFILES_INI" >&2
+    exit 1
+  }
+  PROFILE=$PROFILE_PATH
 fi
 
 if [[ "$EXTENSION" = /* ]]; then
@@ -127,7 +158,6 @@ if [[ -z "$FIREFOX_BIN" ]]; then
   fi
 fi
 
-command -v node >/dev/null 2>&1 || { echo "Node.js is required." >&2; exit 1; }
 command -v npx >/dev/null 2>&1 || { echo "npm/npx is required." >&2; exit 1; }
 
 if ((RUN_LINT)); then
