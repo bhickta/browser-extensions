@@ -1,3 +1,4 @@
 dist/
 *.xpi
 *.zip
+.amo-upload-uuid
