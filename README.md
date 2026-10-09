@@ -17,9 +17,10 @@ The repository includes a reusable launcher for any extension directory:
 ```
 
 It validates the extension and loads it into an isolated `.firefox-dev-profile`
-directory that is ignored by Git. Close Firefox before running it. To
-deliberately use an existing profile, pass `--profile PROFILE_NAME --in-place`;
-see `--help` for details.
+directory that is ignored by Git. Extensions with a `tsconfig.json` (such as
+`smart-video-skipper`) are compiled from `src/*.ts` to `js/*.js` first. Close
+Firefox before running it. To deliberately use an existing profile, pass
+`--profile PROFILE_NAME --in-place`; see `--help` for details.
 
 Development installations are temporary. To install permanently, use Mozilla
 signing credentials to create an unlisted signed XPI and install it into the

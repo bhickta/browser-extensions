@@ -160,11 +160,16 @@ fi
 
 command -v npx >/dev/null 2>&1 || { echo "npm/npx is required." >&2; exit 1; }
 
+if [[ -f "$EXTENSION_DIR/tsconfig.json" ]]; then
+  echo "Building $(basename -- "$EXTENSION_DIR")…"
+  ( cd "$EXTENSION_DIR" && npx --yes -p typescript tsc -p tsconfig.json )
+fi
+
 if ((RUN_LINT)); then
   echo "Validating $(basename -- "$EXTENSION_DIR")…"
   npx --yes web-ext lint \
     --source-dir "$EXTENSION_DIR" \
-    --ignore-files dist README.md Makefile LICENSE .gitignore
+    --ignore-files dist src node_modules js/*.map README.md Makefile LICENSE .gitignore package.json package-lock.json tsconfig.json
 fi
 
 if pgrep -x firefox >/dev/null 2>&1 || pgrep -x firefox-esr >/dev/null 2>&1; then

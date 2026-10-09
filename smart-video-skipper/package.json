@@ -1,0 +1,15 @@
+{
+  "name": "smart-video-skipper",
+  "version": "4.0.0",
+  "private": true,
+  "description": "Cross-browser HTML5 video skip, speed, bookmark, and auto-skip controls.",
+  "scripts": {
+    "build": "npx --yes -p typescript tsc -p tsconfig.json",
+    "watch": "npx --yes -p typescript tsc -p tsconfig.json --watch",
+    "typecheck": "npx --yes -p typescript tsc -p tsconfig.json --noEmit",
+    "package": "make package"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

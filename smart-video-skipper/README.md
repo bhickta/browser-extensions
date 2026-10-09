@@ -1,28 +1,47 @@
 # SmartVideoSkipper Pro
 
-A dependency-free WebExtension for Firefox, Chrome, Chromium, Edge, Brave, and other Manifest V3 browsers. It adds HTML5 video skip controls, auto-skip, playback-speed controls, bookmarks, progress seeking, hotkeys, and an in-page settings panel.
+A dependency-free (runtime) WebExtension for Firefox, Chrome, Chromium, Edge,
+Brave, and other Manifest V3 browsers. It adds a compact floating video dock
+with skip, auto-skip, playback-speed, bookmark, progress, hotkey, and in-page
+settings controls.
 
 ![SmartVideoSkipper logo](icons/icon-128.png)
 
+## Build
+
+Source lives in `src/*.ts` and compiles to `js/*.js`. The build needs Node.js
+and downloads TypeScript on demand through `npx`, so no `node_modules` is
+required.
+
+```sh
+make build        # compile src/*.ts -> js/*.js
+make typecheck    # type-check only
+make package      # compile, validate, and write dist/smart-video-skipper-<version>.zip
+```
+
+The compiled `js/` directory is generated and not tracked by Git. Build before
+loading the extension manually or running the automated installer.
+
 ## Install in Firefox (development)
 
-From the repository root, the automated method is:
+From the repository root:
 
 ```sh
 ./scripts/firefox-dev-install.sh smart-video-skipper
 ```
 
-Run `./scripts/firefox-dev-install.sh --help` for profile and Firefox-binary
-options. Alternatively, load it manually:
+The script builds `src/*.ts`, lints, and loads the extension into an isolated
+`.firefox-dev-profile`. Run `./scripts/firefox-dev-install.sh --help` for
+profile and Firefox-binary options. Alternatively, load it manually:
 
-1. Open `about:debugging#/runtime/this-firefox`.
-2. Select **Load Temporary Add-on…**.
-3. Choose this project's `manifest.json` (or any file in the packaged ZIP).
+1. Run `make build`.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Select **Load Temporary Add-on…** and choose `manifest.json`.
 4. Click the toolbar icon and enable the current site and video controls.
 
 Temporary extensions are removed when Firefox exits. For a permanent
-installation in the dedicated development profile, use Mozilla signing
-credentials to create and install an unlisted signed XPI:
+installation in a profile, use Mozilla signing credentials to create and
+install an unlisted signed XPI:
 
 ```sh
 WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=... \
@@ -34,25 +53,35 @@ Firefox will reject an unsigned XPI.
 
 ## Install in Chromium browsers (development)
 
-1. Open `chrome://extensions` (use the equivalent page in Edge/Brave).
-2. Enable **Developer mode**.
-3. Select **Load unpacked** and choose this directory.
-4. For local videos, open the extension's details and enable **Allow access to file URLs**.
+1. Run `make build`.
+2. Open `chrome://extensions` (or the Edge/Brave equivalent).
+3. Enable **Developer mode**.
+4. Select **Load unpacked** and choose this directory.
+5. For local videos, open the extension details and enable **Allow access to file URLs**.
 
-## Package
+## The dock
 
-Run:
+The in-page control is a compact, collapsible dock, not a full-width bar, so it
+does not cover the video or the native controls:
 
-```sh
-make package
-```
+- The ⚡ handle collapses the dock to a single small button; set **Start
+  collapsed** to keep it small by default.
+- The dock follows the video into fullscreen when the browser reports a
+  fullscreen container.
+- The progress track is scoped to the dock width. Drag it (pointer or keyboard)
+  to seek.
+- The **↕** button moves the dock between the bottom and top edges.
 
-The distributable archive is written to `dist/smart-video-skipper-3.1.2.zip`.
+## Settings
+
+The ⚙ button (or the panel hotkey, default `` ` ``) opens grouped settings:
+Core, Skipping, Speed, Hotkeys, and Overlay. Settings save to `storage.local`
+and apply live across open tabs and frames — no page reload is required.
 
 ## Notes
 
 - Settings are shared through `storage.local` and remain local to the browser profile.
-- The extension starts disabled. Use its toolbar popup to enable controls.
+- The extension starts disabled. Use its toolbar popup to enable controls on a site.
 - The toolbar popup is the cross-browser replacement for userscript manager menu commands.
 - Embedded cross-origin players work because the content script is allowed in all frames.
 - **Prefer forward buffering** continuously applies the browser's strongest

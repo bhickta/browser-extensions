@@ -1,20 +1,32 @@
-VERSION := 3.1.2
+VERSION := $(shell node -p "require('./manifest.json').version")
 PACKAGE := dist/smart-video-skipper-$(VERSION).zip
-FILES := manifest.json content.js content.css popup.html popup.js popup.css README.md LICENSE \
+TSC := npx --yes -p typescript tsc
+SOURCES := src/shared.ts src/content.ts src/popup.ts src/types.d.ts
+BUILT := js/shared.js js/content.js js/popup.js
+FILES := manifest.json js content.css popup.html popup.css README.md LICENSE \
 	icons/icon-16.png icons/icon-19.png icons/icon-32.png icons/icon-38.png \
 	icons/icon-48.png icons/icon-96.png icons/icon-128.png
 
-.PHONY: package check clean
+.PHONY: build typecheck check package clean
 
-check:
+build: $(BUILT)
+
+$(BUILT): $(SOURCES) tsconfig.json
+	$(TSC) -p tsconfig.json
+
+typecheck:
+	$(TSC) -p tsconfig.json --noEmit
+
+check: build
 	python3 -m json.tool manifest.json >/dev/null
-	node --check content.js
-	node --check popup.js
+	node --check js/shared.js
+	node --check js/content.js
+	node --check js/popup.js
 
 package: check
 	mkdir -p dist
-	zip -q -9 $(PACKAGE) $(FILES)
+	zip -q -r -9 $(PACKAGE) $(FILES)
 	@echo "Created $(PACKAGE)"
 
 clean:
-	rm -f $(PACKAGE)
+	rm -f $(PACKAGE) $(BUILT)
