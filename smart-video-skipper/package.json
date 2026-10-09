@@ -1,6 +1,6 @@
 {
   "name": "smart-video-skipper",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "private": true,
   "description": "Cross-browser HTML5 video skip, speed, bookmark, and auto-skip controls.",
   "scripts": {

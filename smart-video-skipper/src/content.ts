@@ -13,6 +13,12 @@
     label: string;
   }
 
+  interface PlaylistInfo {
+    remainingAfter: number;
+    currentDuration: number;
+    count: number;
+  }
+
   interface DockRefs {
     root: HTMLElement;
     body: HTMLElement;
@@ -21,6 +27,7 @@
     forward: HTMLButtonElement;
     auto: HTMLButtonElement;
     time: HTMLElement;
+    playlist: HTMLElement;
     speed: HTMLElement;
     progress: HTMLElement;
     bar: HTMLElement;
@@ -71,10 +78,13 @@
     observer: MutationObserver | null = null;
     autoTimer: ReturnType<typeof setTimeout> | null = null;
     scanTimer: ReturnType<typeof setTimeout> | null = null;
+    playlistTimer: ReturnType<typeof setTimeout> | null = null;
     watchdogTimer: ReturnType<typeof setInterval> | null = null;
     raf: number | null = null;
     active = false;
     bookmarks: Bookmark[] = [];
+    playlist: PlaylistInfo | null = null;
+    lastSrc = '';
     private readonly onKeyDown = (event: KeyboardEvent): void => this.onKey(event);
     private readonly onStorageChange = (changes: Record<string, { newValue?: unknown }>): void => this.onStorage(changes);
 
@@ -86,7 +96,10 @@
       this.mountGlobalUI();
       this.applyTheme();
       addEventListener('keydown', this.onKeyDown, true);
-      addEventListener('yt-navigate-finish', () => this.scheduleScan(600));
+      addEventListener('yt-navigate-finish', () => {
+        this.scheduleScan(600);
+        this.schedulePlaylistRefresh(700);
+      });
       document.addEventListener('fullscreenchange', () => this.reparent());
       document.addEventListener('pointerdown', event => {
         if (this.isPanelOpen() && this.panel && !this.panel.contains(event.target as Node)) this.closePanel();
@@ -101,7 +114,10 @@
       }
       this.watchdogTimer = setInterval(() => {
         if (!this.video || !document.contains(this.video)) this.scheduleScan(0);
-        else this.applyPreloadHint();
+        else {
+          this.applyPreloadHint();
+          if (this.isYouTube()) this.schedulePlaylistRefresh(0);
+        }
       }, 3000);
       this.refresh();
     }
@@ -177,29 +193,103 @@
         this.detachVideo();
       } else if (best && !document.contains(best)) {
         this.detachVideo();
+      } else if (best) {
+        const src = best.currentSrc || best.src || '';
+        if (src && src !== this.lastSrc) this.mediaChanged(src);
       }
+    }
+
+    mediaChanged(src: string): void {
+      this.lastSrc = src;
+      this.bookmarks = [];
+      this.renderBookmarks();
+      this.refreshPlaylist();
     }
 
     attach(video: HTMLVideoElement): void {
       this.detachVideo();
       this.video = video;
       this.bookmarks = [];
+      this.playlist = null;
+      this.lastSrc = video.currentSrc || video.src || '';
       this.applyPreloadHint();
       if (this.active && this.config.get('enabled')) {
         this.mountDock();
         if (this.config.get('autoSkipEnabled')) this.startAutoSkip();
       }
+      this.refreshPlaylist();
     }
 
     detachVideo(): void {
       this.stopAutoSkip();
       this.video = null;
+      this.lastSrc = '';
+      this.playlist = null;
     }
 
     applyPreloadHint(): void {
       if (!this.video || !this.config.get('enabled') || !this.config.get('preferForwardBuffering')) return;
       this.video.preload = 'auto';
       this.video.setAttribute('preload', 'auto');
+    }
+
+    isYouTube(): boolean {
+      return /(^|\.)youtube\.com$/.test(location.hostname);
+    }
+
+    schedulePlaylistRefresh(delay = 800): void {
+      if (!this.isYouTube()) return;
+      if (this.playlistTimer) return;
+      this.playlistTimer = setTimeout(() => {
+        this.playlistTimer = null;
+        this.refreshPlaylist();
+      }, delay);
+    }
+
+    readDuration(element: Element): number | null {
+      const badge = element.querySelector('ytd-thumbnail-overlay-time-status-renderer, #time-status, .time-status');
+      const text = badge?.textContent?.trim() ?? '';
+      const match = /(\d+):(\d{2})(?::(\d{2}))?/.exec(text);
+      if (!match) return null;
+      const [, first, second, third] = match;
+      return third
+        ? Number(first) * 3600 + Number(second) * 60 + Number(third)
+        : Number(first) * 60 + Number(second);
+    }
+
+    refreshPlaylist(): void {
+      this.playlist = null;
+      if (!this.isYouTube()) return;
+      try {
+        const panel = document.querySelector('ytd-playlist-panel-renderer');
+        if (!panel) return;
+        const items = [...panel.querySelectorAll('ytd-playlist-panel-video-renderer')];
+        if (items.length < 2) return;
+        const durations = items.map(item => this.readDuration(item));
+        if (durations.some(duration => duration === null)) return;
+        const selected = items.findIndex(item =>
+          item.hasAttribute('selected') || item.getAttribute('aria-selected') === 'true');
+        if (selected < 0) return;
+        const remainingAfter = durations
+          .slice(selected + 1)
+          .reduce<number>((total, duration) => total + (duration ?? 0), 0);
+        const currentDuration = this.video && Number.isFinite(this.video.duration)
+          ? this.video.duration
+          : (durations[selected] ?? 0);
+        this.playlist = { remainingAfter, currentDuration, count: items.length };
+      } catch {
+        this.playlist = null;
+      }
+    }
+
+    playlistText(playbackRate: number): string {
+      const playlist = this.playlist;
+      if (!playlist || !this.video) return '';
+      const videoRemaining = Math.max(0, playlist.currentDuration - this.video.currentTime);
+      const adjusted = (videoRemaining + playlist.remainingAfter) / (playbackRate || 1);
+      const eta = new Date(Date.now() + adjusted * 1000);
+      const etaText = eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `📃 ${formatTime(adjusted)} left · ends ${etaText}`;
     }
 
     seek(time: number): boolean {
@@ -350,6 +440,7 @@
             <div class="svs-bookmarks"></div>
           </div>
           <span class="svs-time">0:00 / 0:00</span>
+          <span class="svs-playlist" hidden></span>
         </div>
         <div class="svs-flash" aria-live="polite"></div>`;
 
@@ -361,6 +452,7 @@
         forward: qs<HTMLButtonElement>(root, '[data-action="forward"]')!,
         auto: qs<HTMLButtonElement>(root, '[data-action="auto"]')!,
         time: qs<HTMLElement>(root, '.svs-time')!,
+        playlist: qs<HTMLElement>(root, '.svs-playlist')!,
         speed: qs<HTMLElement>(root, '.svs-speed')!,
         progress: qs<HTMLElement>(root, '.svs-progress')!,
         bar: qs<HTMLElement>(root, '.svs-progress i')!,
@@ -388,6 +480,7 @@
       this.appendDockRoot(root);
       this.syncDock();
       this.renderBookmarks();
+      this.refreshPlaylist();
       this.startTicker();
     }
 
@@ -463,6 +556,11 @@
         if (dock.time.textContent !== timeText) dock.time.textContent = timeText;
         const speedText = `${playbackRate.toFixed(2)}×`;
         if (dock.speed.textContent !== speedText) dock.speed.textContent = speedText;
+        const playlistText = this.playlistText(playbackRate);
+        if (dock.playlist.textContent !== playlistText) {
+          dock.playlist.textContent = playlistText;
+          dock.playlist.hidden = !playlistText;
+        }
         const percent = Number.isFinite(duration) && duration > 0 ? (currentTime / duration) * 100 : 0;
         dock.bar.style.width = `${percent}%`;
         dock.thumb.style.left = `${percent}%`;

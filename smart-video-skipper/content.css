@@ -134,6 +134,18 @@
   white-space: nowrap;
 }
 
+.svs-playlist {
+  display: block;
+  text-align: center;
+  color: var(--svs-accent);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.svs-playlist[hidden] {
+  display: none;
+}
+
 .svs-track {
   position: relative;
   width: clamp(180px, 46vw, 420px);

@@ -71,6 +71,9 @@ does not cover the video or the native controls:
 - The progress track is scoped to the dock width. Drag it (pointer or keyboard)
   to seek.
 - The **↕** button moves the dock between the bottom and top edges.
+- On YouTube playlists, the dock adds a playlist line showing the remaining
+  playlist time (speed-adjusted) and the estimated clock time the playlist
+  finishes, e.g. `📃 1:23:45 left · ends 4:56 PM`.
 
 ## Settings
 
